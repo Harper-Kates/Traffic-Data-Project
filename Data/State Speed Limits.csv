@@ -1,0 +1,52 @@
+﻿State,ruralLimit,urbanLimit,limAccessLimit,otherLimit
+Alabama,70,65,65,65
+Alaska,65,55,65,55
+Arizona,75,65,65,65
+Arkansas,75,65,75,65
+California,70,65,70,65
+Colorado,75,65,65,65
+Connecticut,65,55,65,55
+Delaware,65,55,65,55
+District of Columbia,55,55,55,55
+Florida,70,65,70,65
+Georgia,70,70,65,65
+Hawaii,60,60,55,45
+Idaho,75,75,70,70
+Illinois,70,55,65,55
+Indiana,70,55,60,55
+Iowa,70,55,70,65
+Kansas,75,75,75,65
+Kentucky,65,65,65,55
+Louisiana,75,70,70,65
+Maine,75,75,75,60
+Maryland,70,70,70,55
+Massachusetts,65,65,65,55
+Michigan,70,70,70,55
+Minnesota,70,65,65,60
+Mississippi,70,70,70,65
+Missouri,70,60,70,65
+Montana,80,65,70,70
+Nebraska,75,70,70,65
+Nevada,80,65,70,70
+New Hampshire,65,65,55,55
+New Jersey,65,55,65,55
+New Mexico,75,75,65,55
+New York,65,65,65,55
+North Carolina,70,70,70,55
+North Dakota,75,75,70,65
+Ohio,70,65,70,55
+Oklahoma,75,70,70,70
+Oregon,65,55,65,65
+Pennsylvania,70,70,70,55
+Rhode Island,65,55,55,55
+South Carolina,70,70,60,55
+South Dakota,80,80,70,70
+Tennessee,70,70,70,65
+Texas,75,75,75,75
+Utah,75,65,75,65
+Vermont,65,55,50,50
+Virginia,70,70,65,55
+Washington,70,60,60,60
+West Virginia,70,55,65,55
+Wisconsin,70,70,70,55
+Wyoming,75,75,70,70
