@@ -1,0 +1,732 @@
+---
+title: "Statistics Capstone Project"
+output:
+  html_document: default
+  pdf_document: default
+date: "2022-09-01"
+---
+
+```{r load packages and set working directory}
+library(mosaic)
+library(skimr)
+library(dplyr)  
+library(ggplot2)
+library(gridExtra)
+library(tidyr)
+library(stringr)
+library(data.table)
+library(tidyverse)
+library(expss)
+library(mgcv)
+library(MASS)
+library(corrplot)
+library(ggcorrplot)
+library(corrr)
+library(tidyverse)
+setwd("~/R Studio Stuff")
+```
+
+```{r Loading in Data}
+demographics <- read.csv("us-cities-demographics.csv", sep=";")
+censusTract <- read.csv("500_Cities__Census_Tract-level_Data__GIS_Friendly_Format___2017_release.csv")
+inrix <- read.csv("INRIX Data.csv")
+pop <- read.csv("CityPop.csv")
+uptCity <- read.csv("UPT City Data.csv")
+incomeCity <- read.csv("kaggle_income.csv")
+timeCity <- read.csv("table_01_70_092021.csv")
+uscities <- read.csv("uscities.csv")
+
+highwayState <- read_delim("table_data.csv", locale=locale(encoding="UTF-16"), delim="\t")
+demogState <- read.csv("StateDemog.csv")
+demogState2 <- read.csv("stateDemog2.csv")
+houseState <- read.csv("DECENNIALPL2020.csv")
+gqState <- read.csv("groupQuartersByState.csv")
+popState <- read.csv("NST-EST2021-POP.csv")
+speedState <- read.csv("State Speed Limits.csv")
+alcState <- read.csv("csvData.csv")
+incomeState <- read.csv("income.csv")
+areaState <- read.csv("Untitled spreadsheet - Sheet1.csv")
+densityState <- read.csv("state_demographics.csv")
+```
+
+```{r Cleaning Data}
+pop <- subset(pop, select=-1)
+names(pop)[1] <- "City"
+names(pop)[2] <- "AprilEst"
+names(pop)[3] <- "JulyEst"
+names(pop)[4] <- "Est2021"
+pop[59,1] <- "Honolulu, Hawaii"
+pop <- pop[-c(1:3,808:812),]
+pop <- separate(pop, "City", c("City", "State"), sep=", ")
+for(x in 1:804){
+  if(pop$State[x]=="District of Columbia"){
+    pop$stateAbb[x] <- "DC"
+  }
+  else{
+    pop$stateAbb[x] <- state.abb[grep(pop[x, 2], state.name)]
+  }
+}
+pop$City <- paste(pop$City, pop$stateAbb, sep=" ")
+names(uscities)[1] <- "City"
+uscities$City <- paste(uscities$City, uscities$state_id, sep=" ")
+uscities <- uscities[,-c(2:9,11:17)]
+citydata <- merge(pop, uscities, by="City")
+inrix[162,1] <- "New York NY"
+names(inrix)[1] <- "City"
+citydata <- merge(citydata,inrix,by="City")
+citydata <- separate(citydata, "impactRank2020", c("impactRank2020", "delete"), sep=" ")
+citydata <- subset(citydata, select=-9)
+citydata <- separate(citydata, "hrsLostInCongestion2020", c("hrsLost2020", "delete"), sep=" ")
+citydata <- subset(citydata, select=-10)
+citydata$preCovidChange <- gsub("%", "", citydata$preCovidChange)
+citydata$preCovidChange <- gsub("−", "-", citydata$preCovidChange)
+citydata$preCovidChange <- as.numeric(citydata$preCovidChange)
+citydata$AprilEst <- gsub(",", "", citydata$AprilEst)
+citydata$JulyEst <- gsub(",", "", citydata$JulyEst)
+citydata$Est2021 <- gsub(",", "", citydata$Est2021)
+demographics$longname <- nchar(demographics$City)>20
+#Athens, Augusta, Lexington, and Louisville all have expanded names for some reason
+demographics[c(160,253,815,1436,2565), 1] <- rep("Athens", 5)
+demographics[c(56,387,774,1754,2104), 1] <- rep("Augusta", 5)
+demographics[c(1217,1688,2083,2170,2320), 1] <- rep("Lexington", 5)
+demographics[c(973,1347,1433,1684,2851), 1] <- rep("Louisville", 5)
+demographics$City <- paste(demographics$City, demographics$State.Code, sep=" ")
+demographics$AmInd <- ifelse(demographics$Race=="American Indian and Alaska Native",demographics$Count,0)
+demographics$Asian <- ifelse(demographics$Race=="Asian",demographics$Count,0)
+demographics$Black <- ifelse(demographics$Race=="Black or African-American",demographics$Count,0)
+demographics$Hispanic <- ifelse(demographics$Race=="Hispanic or Latino",demographics$Count,0)
+demographics$White <- ifelse(demographics$Race=="White",demographics$Count,0)
+demCondensed <- aggregate(cbind(AmInd, Asian, Black, Hispanic, White) ~ City, data=demographics, FUN=sum)
+demographics <- subset(demographics, select=-c(11:18))
+demographics <- demographics[!duplicated(demographics), ]
+demCondensed <- merge(demographics,demCondensed,by="City")
+demCondensed <- subset(demCondensed, select=-c(2,10))
+citydata <- merge(citydata,demCondensed,by="City")
+censusTract$City <- paste(censusTract$PlaceName, censusTract$StateAbbr, sep=" ")
+censusTract <- subset(censusTract, select=-c(2:6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60,62:63))
+keys <- colnames(censusTract)[!grepl('value',colnames(censusTract))]
+keys <- keys[-1]
+censusTract <- aggregate(cbind(ACCESS2_CrudePrev,ARTHRITIS_CrudePrev,BINGE_CrudePrev,BPHIGH_CrudePrev,BPMED_CrudePrev,CANCER_CrudePrev,CASTHMA_CrudePrev,CHD_CrudePrev,CHECKUP_CrudePrev,CHOLSCREEN_CrudePrev,COLON_SCREEN_CrudePrev,COPD_CrudePrev,COREM_CrudePrev,COREW_CrudePrev,CSMOKING_CrudePrev,DENTAL_CrudePrev,DIABETES_CrudePrev,HIGHCHOL_CrudePrev,KIDNEY_CrudePrev,LPA_CrudePrev,MAMMOUSE_CrudePrev,MHLTH_CrudePrev,OBESITY_CrudePrev,PAPTEST_CrudePrev,PHLTH_CrudePrev,SLEEP_CrudePrev,STROKE_CrudePrev,TEETHLOST_CrudePrev) ~ City, data=censusTract, FUN="mean")
+citydata <- merge(citydata,censusTract,by="City")
+citydata$AprilEst <- gsub(",", "", citydata$AprilEst)
+citydata$JulyEst <- gsub(",", "", citydata$JulyEst)
+citydata$Est2021 <- gsub(",", "", citydata$Est2021)
+citydata[c(3:5,8:9,11)] <- lapply(citydata[c(3:5,8:9,11)], FUN = function(y){as.numeric(y)})
+uptCity <- subset(uptCity, select=-c(1:6,8:9))
+uptCond <- aggregate(cbind(X2002,X2003,X2004,X2005,X2006,X2007,X2008,X2009,X2010,X2011,X2012,X2013,X2014,X2015,X2016,X2017,X2018,X2019,X2020,X2021,X2022) ~ UZA.Name, data=uptCity, FUN=sum)
+uptCond <- rename(uptCond, "City"="UZA.Name")
+citydata <- merge(citydata,uptCond,by="City")
+citydata$popChange <- 100*(citydata$Est2021-citydata$JulyEst)/citydata$JulyEst
+incomeCity$City <- paste(incomeCity$City, incomeCity$State_ab, sep=" ")
+incomeCity <- aggregate(cbind(Mean, Median, Stdev) ~ City, data=incomeCity, FUN="mean")
+citydata <- merge(citydata,incomeCity,by="City")
+timeCity$Urban.area <- gsub(",", "", timeCity$Urban.area)
+timeCity <- rename(timeCity, "City"="Urban.area")
+citydata <- merge(citydata,timeCity,by="City")
+citylong1 <- gather(citydata, year, ridership, c(X2002:X2020), factor_key=TRUE)
+citylong1$ID <- paste(citylong1$City, citylong1$year, sep=" ")
+citylong2 <- gather(citydata, year, peakRatio, c(tr02:tr20), factor_key=TRUE)
+citylong2 <- subset(citylong2, select=c(1, 78:79))
+citylong2$year <- gsub("tr", "X20", citylong2$year)
+citylong2$ID <- paste(citylong2$City, citylong2$year, sep=" ")
+citylong <- merge(citylong1, citylong2, by="ID")
+citylong <- rename(citylong, "City"="City.x")
+citylong <- rename(citylong, "year02"="year.x")
+citylong$year02 <- gsub("X", "", citylong$year02)
+citylong$year02 <- as.numeric(citylong$year02)
+citylong$year02 <- citylong$year02-2002
+citylong$ridership <- replace(citylong$ridership, citylong$ridership==0, NA)
+citylong <- subset(citylong, select=-c(53:54, 60:78, 81:82))
+
+highwayStateWide <- highwayState %>% pivot_wider(names_from = Measures, values_from = Values)
+highwayStateWide <- subset(highwayStateWide, select=-c(9:11))
+highwayState2020 <- subset(highwayState, Year==2020)
+highwayState2020$Transit <- ifelse(highwayState2020$Measures=="Transit Ridership",highwayState2020$Values,0)
+highwayState2020$Fatalities <- ifelse(highwayState2020$Measures=="Highway Fatalities",highwayState2020$Values,0)
+highwayState2020$Gas <- ifelse(highwayState2020$Measures=="Highway use of gasoline (thousand gallons)",highwayState2020$Values,0)
+highwayState2020$Miles <- ifelse(highwayState2020$Measures=="Highway vehicle-miles traveled (millions)",highwayState2020$Values,0)
+highwayState2020$Vehicles <- ifelse(highwayState2020$Measures=="Vehicles",highwayState2020$Values,0)
+highwayState2020$Licenses <- ifelse(highwayState2020$Measures=="Licensed drivers",highwayState2020$Values,0)
+highwayCondensed <- aggregate(cbind(Transit, Fatalities, Gas, Miles, Vehicles, Licenses) ~ State, data=highwayState2020, FUN=sum)
+highwayCondensed <- highwayCondensed[-c(40,46),]
+houseState <- houseState[-40,]
+houseState$State <- houseState$Label..Grouping.
+statedata <- merge(highwayCondensed,houseState,by="State")
+statedata <- subset(statedata, select=-8)
+statedata$Total. <- gsub(",", "", statedata$Total.)
+statedata$Total...Occupied <- gsub(",", "", statedata$Total...Occupied)
+statedata$Total...Vacant <- gsub(",", "", statedata$Total...Vacant)
+statedata[c(8:10)] <- lapply(statedata[c(8:10)], FUN = function(y){as.numeric(y)})
+gqState <- rename(gqState, "State"=Label)
+statedata <- merge(statedata,gqState,by="State")
+statedata <- merge(statedata,popState,by="State")
+statedata <- rename(statedata, "houses"="Total.")
+statedata <- merge(statedata,speedState,by="State")
+demogState <- subset(demogState, select=-c(4:10))
+demogState <- rename(demogState, "State"=X)
+statedata <- merge(statedata,demogState,by="State")
+demogState2 <- demogState2[, c(1, 16)]
+demogState2 <- rename(demogState2, "State"=X)
+statedata <- merge(statedata,demogState2,by="State")
+statedata <- merge(statedata,areaState,by="State")
+statedata <- merge(statedata,densityState,by="State")
+NE.name <- c("Connecticut", "Maine", "Massachusetts", "New Hampshire", "Rhode Island", "Vermont", "New Jersey", "New York", "Pennsylvania")
+MW.name <- c("Indiana", "Illinois", "Michigan", "Ohio", "Wisconsin", "Iowa", "Kansas", "Minnesota", "Missouri", "Nebraska", "North Dakota", "South Dakota")
+S.name <- c("Delaware", "District of Columbia", "Florida", "Georgia", "Maryland", "North Carolina", "South Carolina", "Virginia", "West Virginia", "Alabama", "Kentucky", "Mississippi", "Tennessee", "Arkansas", "Louisiana", "Oklahoma", "Texas")
+W.name <- c("Arizona", "Colorado", "Idaho", "New Mexico", "Montana", "Utah", "Nevada", "Wyoming", "Alaska", "California", "Hawaii", "Oregon", "Washington")
+region.list <- list(
+  Northeast=NE.name,
+  Midwest=MW.name,
+  South=S.name,
+  West=W.name)
+statedata$region <- sapply(statedata$State, 
+                 function(x) names(region.list)[grep(x,region.list)])
+citydata$region <- sapply(citydata$State, 
+                 function(x) names(region.list)[grep(x,region.list)])
+citylong$region <- sapply(citylong$State, 
+                 function(x) names(region.list)[grep(x,region.list)])
+statedata <- merge(statedata,alcState,by="State")
+incomeState <- rename(incomeState, "State"="Name")
+incomeState <- subset(incomeState, select=-4)
+statedata <- merge(statedata,incomeState,by="State")
+```
+
+```{r Example}
+columbia <- citydata[21,71]/citydata[21,5]
+buffalo <- citydata[14,71]/citydata[14,5]
+ratio <- buffalo/columbia
+ratio
+#Buffalo has about 3.4 times more public transport ridership per person than Columbia, SC. This explains why Buffalo has fewer hours lost due to traffic than Columbia despite having 6 times the population density.
+```
+
+```{r City EDA}
+hist(citydata$hrsLost2020)
+hist(citydata$preCovidChange)
+hist(citydata$preCovidChange, xlim=c(-100, 100), breaks=50)
+hist(citydata$lastMile)
+#All 3 traffic metrics are skewed to the right.
+
+#Adding a few rate variables:
+citydata$pctmale <- 100*citydata$Male.Population/citydata$Est2021
+citydata$vetpct <- 100*citydata$Number.of.Veterans/citydata$Est2021
+citydata$forpct <- 100*citydata$Foreign.born/citydata$Est2021
+citydata$whitepct <- citydata$White/citydata$Est2021
+citydata$blackpct <- citydata$Black/citydata$Est2021
+citydata$hispanicpct <- citydata$Hispanic/citydata$Est2021
+citydata$asianpct <- citydata$Asian/citydata$Est2021
+citydata$amindpct <- citydata$AmInd/citydata$Est2021
+citydata$insurance_prev <- 100-citydata$ACCESS2_CrudePrev
+citydata$riderrate <- citydata$X2021/citydata$Est2021
+
+citydataKeys <- citydata[,-c(1:4, 6, 8, 13:17, 19:24, 52:72, 77:96)]
+check <- complete.cases(citydataKeys)
+citykeys2 <- citydataKeys[check,]
+citykeyscorr <- correlate(citydataKeys)
+
+#According to the correlation matrix, the relevant variables most correlated to each metric are:
+#hrsLost2020: density, public transport ridership per capita, population, pop. change (-), foreign pct, wealth disparity
+#preCovidChange: prev. of cholesterol screening (-), average household size, prev. of pap smear (-), prev. of health insurance (-), COLON_SCREEN_CrudePrev (-, measures prevalence of colonoscopy-related tests for 50-75-year-olds)
+#lastMile: density (-), pop. change, population (-), veteran pct., wealth disparity (-)
+
+boxplot(hrsLost2020 ~ region, data=citydata, horizontal = T)
+#Northeastern cities have the most hours lost, while Midwestern cities have the fewest.
+boxplot(preCovidChange ~ region, data=citydata, horizontal = T)
+#Outliers are making the differences hard to see.
+boxplot(preCovidChange ~ region, data=citydata, horizontal = T, ylim=c(-100, 100))
+#No one region seems to have the most or least change due to COVID.
+boxplot(lastMile ~ region, data=citydata, horizontal = T)
+#Northeastern cities have the lowest last-mile speed. Interestingly, despite the fact that Midwestern cities have the fewest hours lost to traffic, these cities do not clearly have the highest last-mile speed.
+
+boxplot(density ~ region, data=citydata, horizontal = T)
+
+boxplot(riderrate ~ region, data=citydata, horizontal = T)
+
+ggplot(citydata, aes(y=hrsLost2020, x=log(Est2021)))+geom_point()+geom_smooth(method="lm")
+
+boxplot(popChange ~ region, data=citydata, horizontal = T)
+ggplot(citydata, aes(y=hrsLost2020, x=popChange))+geom_point()+geom_smooth(method="lm")
+#Population change is negatively corr. with hours lost. 
+ggplot(citydata, aes(y=hrsLost2020, x=popChange, col=region))+geom_point()+geom_smooth(method="lm")
+#This correlation is stronger in Midwestern and Northeastern cities.
+ggplot(citydata, aes(y=log(preCovidChange+100), x=popChange, col=region))+geom_point()+geom_smooth(method="lm")
+ggplot(citydata, aes(y=lastMile, x=popChange, col=region))+geom_point()+geom_smooth(method="lm")
+#Weak positive corr. between population change and last-mile speed.
+
+boxplot(pctmale ~ region, data=citydata, horizontal = T)
+#Western cities have a higher percentage of males.
+ggplot(citydata, aes(y=hrsLost2020, x=pctmale, col=region))+geom_point()+geom_smooth(method="lm")
+#No correlation between male percentage and hours lost except in Northeastern cities, which have a negative correlation.
+ggplot(citydata, aes(y=lastMile, x=pctmale, col=region))+geom_point()+geom_smooth(method="lm")
+#Again, last mile speed seems to be the inverse of hours lost.
+
+boxplot(Median.Age ~ region, data=citydata, horizontal = T)
+#Northeastern cities are slightly younger than cities in other regions.
+ggplot(citydata, aes(y=hrsLost2020, x=Median.Age, col=region))+geom_point()+geom_smooth(method="lm")
+#There is a general positive correlation between median age and hours lost, but this correlation is stronger for Northeastern cities and non-existent for Midwestern cities.
+ggplot(citydata, aes(y=preCovidChange, x=Median.Age, col=region))+geom_point()+geom_smooth(method="lm")+coord_cartesian(ylim = c(-100, 100))
+#Weak correlations across the board.
+ggplot(citydata, aes(y=lastMile, x=Median.Age, col=region))+geom_point()+geom_smooth(method="lm")
+#Older Western cities have a slower last-mile speed, but older Midwestern cities have a faster last-mile speed.
+
+boxplot(vetpct ~ region, data=citydata, horizontal = T)
+#Northeastern cities have a lower proportion of veterans.
+ggplot(citydata, aes(y=hrsLost2020, x=vetpct, col=region))+geom_point()+geom_smooth(method="lm")
+#There is a negative non-linear correlation between veteran percentage and hours lost.
+ggplot(citydata, aes(y=preCovidChange, x=vetpct, col=region))+geom_point()+geom_smooth(method="lm")+coord_cartesian(ylim = c(-100, 100))
+ggplot(citydata, aes(y=lastMile, x=vetpct))+geom_point()+geom_smooth(method="lm")
+#Cities with a higher veteran population generally have better traffic...but sources say that veterans are more likely to commit DWIs and other driving offenses. Maybe there is a potential confounding variable.
+
+boxplot(forpct ~ region, data=citydata, horizontal = T)
+ggplot(citydata, aes(y=hrsLost2020, x=forpct, col=region))+geom_point()+geom_smooth(method="lm")
+ggplot(citydata, aes(y=lastMile, x=forpct))+geom_point()+geom_smooth(method="lm")
+#Some cities are more likely to have more potential job opportunities, which increases traffic while also attracting foreign-born people.
+
+boxplot(Average.Household.Size ~ region, data=citydata, horizontal = T)
+#Western cities have higher average household sizes, while Midwestern cities have lower household sizes
+ggplot(citydata, aes(y=hrsLost2020, x=Average.Household.Size, col=region))+geom_point()+geom_smooth(method="lm")
+ggplot(citydata, aes(y=lastMile, x=Average.Household.Size, col=region))+geom_point()+geom_smooth(method="lm")
+#Households with more people tend to have more people in the same car, thus reducing traffic congestion.
+ggplot(citydata, aes(y=log(preCovidChange+100), x=Average.Household.Size, col=region))+geom_point()+geom_smooth(method="lm")
+
+boxplot(whitepct ~ region, data=citydata, horizontal = T)
+ggplot(citydata, aes(y=hrsLost2020, x=whitepct))+geom_point()
+
+ggplot(citydata, aes(y=lastMile, x=whitepct))+geom_point()
+
+ggplot(citydata, aes(y=hrsLost2020, x=Median, col=region))+geom_point()+geom_smooth(method="lm")
+ggplot(citydata, aes(y=lastMile, x=Median, col=region))+geom_point()+geom_smooth(method="lm")
+
+boxplot(Stdev ~ region, data=citydata, horizontal = T)
+ggplot(citydata, aes(y=hrsLost2020, x=Stdev, col=region))+geom_point()+geom_smooth(method="lm")
+ggplot(citydata, aes(y=lastMile, x=Stdev))+geom_point()+geom_smooth(method="lm")
+#Traffic congestion appears to worsen as wealth disparity increases.
+ggplot(citydata, aes(y=Stdev, x=log(Est2021)))+geom_point()
+#More populated areas are likely to have greater wealth disparity.
+
+theme.1 <- theme(axis.title.x = element_text(size = 14),
+  axis.title.y = element_text(size = 14),
+  plot.title=element_text(hjust=.9,face="italic",size=12))
+ggplot(citylong, aes(x = year02, y = log(ridership))) + 
+  geom_line(aes(group = City), color = "dark grey") + 
+  geom_smooth(aes(group = 1), color = "black", size = 1) + 
+  theme.1 + 
+  labs(x = "Years since 2002", y = "Log Ridership")
+#I used log ridership since ridership is skewed to the right.
+#Public transport is becoming less prevalent, especially with COVID
+ggplot(citylong, aes(x = year02, y = peakRatio)) + 
+  geom_line(aes(group = City), color = "dark grey") + 
+  geom_smooth(aes(group = 1), color = "black", size = 1) + 
+  theme.1 + 
+  labs(x = "Years since 2002", y = "Traffic Ratio")
+#The only thing that halted the rise of traffic congestion was COVID; traffic was really bad in the late 2010s.
+rates = data.frame(matrix(nrow = 76, ncol = 0))
+rates$riderRate <- by(citylong, citylong$City, function(data)
+                  coefficients(lm(ridership ~ year02, data = data))[[2]])
+rates$trafficRate <- by(citylong, citylong$City, function(data)
+                  coefficients(lm(peakRatio ~ year02, data = data))[[2]])
+rates$riderNegative <- ifelse(rates$riderRate<=0, "-", "+")
+ggplot(rates, aes(y=trafficRate, x=riderRate))+geom_point()+xlim(-1000000,1000000)+geom_smooth(method="lm")
+boxplot(trafficRate ~ riderNegative, data = rates)
+#After removing outliers, we find that cities whose public transportation ridership increased over time have almost exclusively had their peak freeflow ratio decrease over time. While RAW public transportation ridership is positively correlated with PREVALENCE of traffic congestion, GROWTH in public transportation is correlated with DECLINE in traffic.
+
+boxplot(log(riderrate) ~ region, data=citydata)
+#Northeastern cities have the highest frequency of public transportation ridership per person.
+
+model.a <- lm(riderrate~density, citydata)
+res <- resid(model.a)
+df <- data.frame(
+    region=citydata$region,
+    y=res,
+    x=fitted(model.a))
+mean <- df%>% group_by(region)%>%summarise(mean_val=mean(y))
+ggplot(data = df, aes(x= x, y=y)) +
+geom_point(aes(colour = region)) +
+geom_hline(data= mean, aes(yintercept = mean_val,col=region))
+#Despite the discrepancies in public transport ridership rates among regions of the US, after adjusting for density, these discrepancies are either neutralized or very slightly reversed. This tells us that a city's density does a good job of explaining why some cities have more public transport and others may have less.
+```
+
+```{r State EDA}
+statedata$adjTransit <- statedata$Transit/statedata$popApr2020
+#This measures the number of public transit units per person in 2020.
+statedata$fatalityRate <- 100000*statedata$Fatalities/statedata$popApr2020
+#This measures the number of fatalities per 100000 people.
+hist(statedata$fatalityRate)
+#Fatality rate is skewed to the right, which means that most states have relatively low fatality rates.
+statedata$adjGas <- 100*statedata$Gas/statedata$popApr2020
+#This measures the number of gallons of gas used per 100000 people in 2020.
+statedata$adjMiles <- 100*statedata$Miles/statedata$popApr2020
+#This measures the number of highway vehicle miles per 100000 people in 2020.
+statedata$licpct <- statedata$Licenses/statedata$popApr2020
+#This measures the percentage of people with a driver's license.
+statedata$vehPerPerson <- statedata$Vehicles/statedata$popApr2020
+#This measures the average number of vehicles per person.
+statedata$prisonpct <- 100000*statedata$correcAdult/statedata$popApr2020
+#This measures the number of people living in adult correctional facilities per 100000 people.
+statedata$gqpct <- 100000*statedata$totGroupQuarters/statedata$popApr2020
+#This measures the number of people living in group quarters per 100000 people.
+statedata$juvpct <- 100000*statedata$juvFacil/statedata$popApr2020
+#This measures the number of people living in juvenile correctional facilities per 100000 people.
+statedata$collegepct <- 100000*statedata$collegeHousing/statedata$popApr2020
+#This measures the number of people living on college campus per 100000 people.
+statedata$mqpct <- 100000*statedata$militaryQuarters/statedata$popApr2020
+#This measures the number of people living in military quarters per 100000 people.
+statedata$whitepct <- statedata$White/statedata$Total.population
+#This measures the percentage of white people in each state.
+statedata$blackpct <- statedata$Black/statedata$Total.population
+statedata$asianpct <- statedata$Asian/statedata$Total.population
+statedata$amindpct <- statedata$AmInd/statedata$Total.population
+statedata$hisppct <- statedata$Hispanic/statedata$Total.population
+statedata$primepct <- statedata$PrimeAge/statedata$Total.population
+statedata$seniorpct <- statedata$Senior/statedata$Total.population
+statedata$incomeGrowth <- 100*(statedata$X2021-statedata$Preceding.Period)/statedata$Preceding.Period
+#This measures the percent income growth from 2020 to 2021 for each state.
+statedata$popGrowth <- 100*(statedata$popJuly2021-statedata$popApr2020)/statedata$popApr2020
+
+statedataKeys <- statedata[,-c(1:2, 4:23, 26:27, 29:31, 33:37, 43)]
+check2 <- complete.cases(statedataKeys)
+statekeys2 <- statedataKeys[check2,]
+statekeyscorr <- correlate(statedataKeys)
+
+boxplot(fatalityRate ~ region, data=statedata, horizontal = T)
+#Southern states tend to have high fatality rates.
+#Log graph:
+boxplot(log(fatalityRate) ~ region, data=statedata, horizontal = T)
+
+boxplot(adjGas ~ region, data=statedata, horizontal = T)
+#Southern and Midwestern states tend to use more gas per person.
+boxplot(adjMiles ~ region, data=statedata, horizontal = T)
+#The average driver in the South tends to drive more miles per year than the rest of the US.
+boxplot(vehPerPerson ~ region, data=statedata, horizontal = T)
+#Midwestern states tend to have more vehicles per person.
+
+ggplot(statedata, aes(y=fatalityRate, x=adjGas, col=region))+geom_point()+geom_smooth(method="lm")
+#There is a positive relationship between gas usage and fatality rate.
+ggplot(statedata, aes(y=fatalityRate, x=adjMiles, col=region))+geom_point()+geom_smooth(method="lm")
+#Same story for highway mileage.
+ggplot(statedata, aes(y=fatalityRate, x=licpct, col=region))+geom_point()+geom_smooth(method="lm")
+ggplot(statedata, aes(y=fatalityRate, x=vehPerPerson, col=region))+geom_point()+geom_smooth(method="lm")
+#There is a positive correlation between vehicles per person and fatality rate.
+
+boxplot(X2021 ~ region, data=statedata, horizontal = T)
+#Southern states generally have a lower median income. Perhaps this is why they don't invest as much money into public transportation.
+ggplot(statedata, aes(y=fatalityRate, x=X2021, col=region))+geom_point()+geom_smooth(method="lm")
+#Highway fatality rates are higher in states with lower median income.
+
+boxplot(gqpct ~ region, data=statedata, horizontal = T)
+#Northeastern states have higher proportions of people living in group quarters. Maybe people who live in group quarters are less dependent on private/highway transportation.
+
+boxplot(prisonpct ~ region, data=statedata, horizontal = T)
+#The South has the highest prison population proportion. This might relate to the higher fatality rates.
+ggplot(statedata, aes(y=fatalityRate, x=prisonpct, col=region))+geom_point()+geom_smooth(method="lm")
+#There is a significant positive correlation between prison population proportion and highway fatality rate.
+ggplot(statedata, aes(y=prisonpct, x=X2021, col=region))+geom_point()+geom_smooth(method="lm")
+#There is a negative correlation between median income and prison population proportion.
+#The US incarceration crisis has disproportionately affected minority populations, so it would make sense to see if race-based variables have anything to do with this.
+ggplot(statedata, aes(y=prisonpct, x=whitepct))+geom_point()+geom_smooth(method="lm")
+#The percentage of white people by state has little correlation with prison population proportion.
+
+ggplot(statedata, aes(y=prisonpct, x=density, col=region))+geom_point()+geom_smooth(method="lm")
+#Population density appears to have a non-linear negative correlation with prison population proportion. This correlation is stronger for Southern and Western states.
+ggplot(statedata, aes(y=X2021, x=density, col=region))+geom_point()+geom_smooth(method="lm")
+#Population density has a non-linear correlation with median income. Again, this correlation is stronger in Southern and Western states.
+
+boxplot(popGrowth ~ region, data=statedata, horizontal = T)
+#Southern and Western states are seeing more population growth than in other regions.
+ggplot(statedata, aes(y=fatalityRate, x=popGrowth, col=region))+geom_point()+geom_smooth(method="lm")
+#However, this seems to have no real effect on highway fatality rate.
+
+boxplot(alcoholConsumptionGallons ~ region, data=statedata, horizontal = T)
+#Alcohol consumption is lowest in the South compared to other regions.
+ggplot(statedata, aes(y=fatalityRate, x=alcoholConsumptionGallons, col=region))+geom_point()+geom_smooth(method="lm")
+#Surprisingly, alcohol consumption per capita seems to have no effect on highway fatality rate.
+
+boxplot(mqpct ~ region, data=statedata, horizontal = T)
+#No region in particular has the highest proportion of people living in military quarters, but this proportion is lowest in the Northeast.
+hist(statedata$mqpct)
+#The proportion of people living in military quarters for each state is heavily skewed to the right, so a log-transformation might be useful.
+ggplot(statedata, aes(y=fatalityRate, x=log(mqpct), col=region))+geom_point()+geom_smooth(method="lm")
+#The proportion of people living in military quarters seems to have no real correlation with highway fatality rate.
+
+boxplot(primepct ~ region, data=statedata, horizontal = T)
+#Midwestern states have the lowest proportion of people in prime driving age.
+hist(statedata$primepct)
+ggplot(statedata, aes(y=fatalityRate, x=primepct, col=region))+geom_point()+geom_smooth(method="lm")
+#For each region, the proportion of people in prime driving age is negatively correlated with highway fatality rate.
+
+boxplot(seniorpct ~ region, data=statedata, horizontal = T)
+#Northeastern states have the highest proportion of senior citizens.
+ggplot(statedata, aes(y=fatalityRate, x=seniorpct, col=region))+geom_point()+geom_smooth(method="lm")
+#Some regions seem to have a positive correlation between proportion of senior citizens and fatality rate, but the overall correlation is relatively weak.
+
+boxplot(adjTransit ~ region, data=statedata, horizontal = T)
+#Southern and Midwestern states have lower frequencies of public transport ridership per capita, while Northeastern and Western states have higher frequencies.
+ggplot(statedata, aes(y=fatalityRate, x=adjTransit, col=region))+geom_point()+geom_smooth(method="lm")
+#There is a negative non-linear relationship between public transport ridership per capita and highway fatality rate.
+
+model.b <- lm(fatalityRate~adjTransit, statedata)
+res <- resid(model.b)
+df <- data.frame(
+    region=statedata$region,
+    y=res,
+    x=fitted(model.b))
+mean <- df%>% group_by(region)%>%summarise(mean_val=mean(y))
+ggplot(data = df, aes(x= x, y=y)) +
+geom_point(aes(colour = region)) +
+geom_hline(data= mean, aes(yintercept = mean_val,col=region))
+#Southern states still have a disproportionately high fatality rate even after accounting for public transport ridership per capita. This means that there are other important variables to measure.
+
+cross_cases(statedata, region, ruralLimit)
+#The Northeast has the lowest rural speed limits.
+cross_cases(statedata, region, urbanLimit)
+#The Northeast and West have the lowest urban speed limits.
+boxplot(fatalityRate ~ as.factor(ruralLimit), data=statedata, horizontal = T)
+#Fatality rate indeed increases as the rural speed limit increases.
+boxplot(fatalityRate ~ as.factor(urbanLimit), data=statedata, horizontal = T)
+#Same story for urban speed limit.
+
+boxplot(density ~ region, data=statedata, horizontal = T)
+#Northeastern states are the most densely populated, while Western states are the least.
+ggplot(statedata, aes(y=fatalityRate, density, col=region))+geom_point()+geom_smooth(method="lm")
+#There is a non-linear negative correlation between population density and fatality rate.
+ggplot(statedata, aes(y=X2021, density, col=region))+geom_point()+geom_smooth(method="lm")
+#There is a positive correlation between median income and population density in Southern and Western states, but a negative correlation in Midwestern states.
+boxplot(density ~ urbanLimit, data=statedata, horizontal = T)
+#As expected: less densely populated states have lower speed limits. The 70 mph category seems to break this trend because Southern states, which are becoming more densely populated, still have 70 mph speed limits on urban highways.
+boxplot(density ~ ruralLimit, data=statedata, horizontal = T)
+#Same is true for rural speed limits.
+
+model.c <- lm(fatalityRate~density, statedata)
+res <- resid(model.c)
+df <- data.frame(
+    region=statedata$region,
+    y=res,
+    x=fitted(model.c))
+mean <- df%>% group_by(region)%>%summarise(mean_val=mean(y))
+ggplot(data = df, aes(x= x, y=y)) +
+geom_point(aes(colour = region)) +
+geom_hline(data= mean, aes(yintercept = mean_val,col=region))
+#Southern states have a disproportionately high fatality rate compared to their population density; this might suggest that density is not the only factor that explains variation in fatality rate.
+
+model.d <- lm(urbanLimit~density, statedata)
+res <- resid(model.d)
+df <- data.frame(
+    region=statedata$region,
+    y=res,
+    x=fitted(model.d))
+mean <- df%>% group_by(region)%>%summarise(mean_val=mean(y))
+ggplot(data = df, aes(x= x, y=y)) +
+geom_point(aes(colour = region)) +
+geom_hline(data= mean, aes(yintercept = mean_val,col=region))
+#Southern states have disproportionately high speed limits compared to their population density.
+
+model.e <- lm(fatalityRate~urbanLimit+density, statedata)
+res <- resid(model.e)
+df <- data.frame(
+    region=statedata$region,
+    y=res,
+    x=fitted(model.e))
+mean <- df%>% group_by(region)%>%summarise(mean_val=mean(y))
+ggplot(data = df, aes(x= x, y=y)) +
+geom_point(aes(colour = region)) +
+geom_hline(data= mean, aes(yintercept = mean_val,col=region))
+#However, the fatality rates are still disproportionately high even after accounting for speed limit, which might indicate that speed limit is not the ultimate factor that explains why Southern states have high fatality rates.
+```
+
+```{r First Model}
+model1.0 <- lm(hrsLost2020~1, citydataKeys)
+summary(model1.0)
+plot(model1.0$residuals~model1.0$fitted.values)
+abline(h=0)
+qqnorm(model1.0$residuals)
+#Again, hrsLost2020 is not Normally distributed.
+
+model1keys <- citydataKeys[, -c(4:6, 8, 10:34, 36, 40, 43:48)]
+
+model1.1 <- glm(log(hrsLost2020) ~ ., family = "poisson", model1keys)
+summary(model1.1)
+qqnorm(model1.1$residuals)
+
+model1.2 <- stepAIC(model1.1)
+summary(model1.2)
+gof <- 1-pchisq(model1.2$deviance, model1.2$df.residual)
+gof
+#Backwards regression using the stepAIC function yields a model that has 10 variables, but the model does not fit the data according to goodness-of-fit. This may suggest there is something wrong with the data.
+
+bin_function <- function(var){
+  my_seq <- seq(min(var), max(var), length.out = 6)
+  bins <- case_when(var < my_seq[2] ~ paste0(my_seq[2]),
+                   var < my_seq[3] ~ paste0(my_seq[3]),
+                   var < my_seq[4] ~ paste0(my_seq[4]),
+                   var < my_seq[5] ~ paste0(my_seq[5]),
+                   var <= my_seq[6] ~ paste0(my_seq[6]))
+}
+
+make_bins <- function(var){
+  citydata %>% mutate(var_bin = bin_function(var)) %>% group_by(var_bin) %>% summarize(mean_counts = mean(hrsLost2020), var_counts = var(hrsLost2020))
+}
+
+make_bins(citydata$Est2021)
+make_bins(citydata$Average.Household.Size)
+make_bins(citydata$BINGE_CrudePrev)
+make_bins(citydata$popChange)
+make_bins(citydata$Median)
+make_bins(citydata$Stdev)
+make_bins(citydata$forpct)
+make_bins(citydata$riderrate)
+#For every numerical variable, the variances in hours lost for most groups is far larger than the means; this means we will need a quasi-poisson model.
+
+#citydata %>% mutate(binge_bin = bin_function(BINGE_CrudePrev)) %>% group_by(binge_bin) %>% summarize(mean_counts = mean(hrsLost2020), var_counts = var(hrsLost2020)) %>% ggplot(aes(x = as.numeric(binge_bin), mean_counts)) + geom_point() + geom_smooth(method = "lm")
+
+model1.3 <- glm(hrsLost2020 ~ ., family = "quasipoisson",  model1keys)
+summary(model1.3)
+#The dispersion parameter is about 8.086, suggesting that this was indeed the right move.
+qqnorm(model1.3$residuals)
+#Since quasi-poisson models have no AIC, the stepAIC function will not work, so we will have to manually remove each insignificant variable.
+
+model1.4 <- glm(hrsLost2020 ~ . -density, family = "quasipoisson",  model1keys)
+summary(model1.4)
+anova(model1.4, model1.3, test="Chisq")
+model1.5 <- glm(hrsLost2020 ~ . -density -riderrate, family = "quasipoisson",  model1keys)
+summary(model1.5)
+anova(model1.5, model1.4, test="Chisq")
+model1.6 <- glm(hrsLost2020 ~ . -density -vetpct -riderrate, family = "quasipoisson",  model1keys)
+summary(model1.6)
+anova(model1.6, model1.5, test="Chisq")
+model1.7 <- glm(hrsLost2020 ~ . -density -vetpct -riderrate -Stdev, family = "quasipoisson",  model1keys)
+summary(model1.7)
+anova(model1.7, model1.6, test="Chisq")
+model1.8 <- glm(hrsLost2020 ~ . -density -vetpct -riderrate -popChange -Stdev, family = "quasipoisson",  model1keys)
+summary(model1.8)
+anova(model1.8, model1.7, test="Chisq")
+#Every variable is significant. Model 1.8 is the best quasi-poisson model.
+gof <- 1-pchisq(model1.8$deviance, model1.8$df.residual)
+gof
+#However, it does not fit the data.
+
+#Negative Binomial:
+model1.9 <- glm.nb(hrsLost2020 ~ ., data = model1keys)
+summary(model1.9)
+qqnorm(model1.9$residuals)
+gof <- 1-pchisq(model1.9$deviance, model1.9$df.residual)
+gof
+#This model fits the data, but many of our variables are insignificant.
+
+model1.10 <- stepAIC(model1.9)
+summary(model1.10)
+qqnorm(model1.10$residuals)
+gof <- 1-pchisq(model1.10$deviance, model1.10$df.residual)
+gof
+#This model fits the data.
+
+iqr(model1keys$Est2021)/2
+iqr(model1keys$Average.Household.Size)/2
+iqr(model1keys$BINGE_CrudePrev)/2
+iqr(model1keys$popChange)/2
+iqr(model1keys$Stdev)/2
+iqr(model1keys$forpct)/2
+iqr(model1keys$riderrate)/2
+```
+
+```{r Second Model}
+model2keys <- citydataKeys[, -c(3, 5, 36, 40:47)]
+model2keys$covidChange <- citydata$covidChange + 100
+model2keys$covidChange[is.na(model2keys$covidChange)] <- 100
+model2.0 <- glm(preCovidChange ~ 1, family = "poisson", model2keys)
+summary(model2.0)
+#This shows that variation in the data exists.
+
+model2.1 <- glm(preCovidChange ~ ., family = "poisson",  model2keys)
+summary(model2.1)
+gof <- 1-pchisq(model2.1$deviance, model2.1$df.residual)
+gof
+#Using all terms does not fit the model.
+
+model2.2 <- stepAIC(model2.1)
+summary(model2.2)
+gof <- 1-pchisq(model2.2$deviance, model2.2$df.residual)
+gof
+#Even the stepAIC function doesn't help improve the goodness of fit. Let's try a negative binomial model.
+
+model2.3 <- glm.nb(preCovidChange ~ ., model2keys)
+summary(model2.3)
+gof <- 1-pchisq(model2.3$deviance, model2.3$df.residual)
+gof
+
+model2.4 <- stepAIC(model2.3)
+summary(model2.4)
+gof <- 1-pchisq(model2.4$deviance, model2.4$df.residual)
+gof
+#There are way too many variables, and the goodness-of-fit test fails. Perhaps backwards regression doesn't work.
+
+model2.5 <- glm.nb(preCovidChange ~ CHOLSCREEN_CrudePrev + PAPTEST_CrudePrev + COLON_SCREEN_CrudePrev + Average.Household.Size + insurance_prev, model2keys)
+summary(model2.5)
+gof <- 1-pchisq(model2.5$deviance, model2.5$df.residual)
+gof
+#This model fits the data. This is a good sign.
+
+model2.6 <- stepAIC(model2.5)
+summary(model2.6)
+gof <- 1-pchisq(model2.6$deviance, model2.6$df.residual)
+gof
+#The model still fits the data.
+```
+
+```{r Third Model}
+model3keys <- citydataKeys[, -c(3:4, 6, 8, 10:34, 36, 40, 43:48)]
+
+model3.1 <- glm(lastMile ~ ., family = "poisson", data = model3keys)
+summary(model3.1)
+model3.2 <- stepAIC(model3.1)
+summary(model3.2)
+gof <- 1-pchisq(model3.2$deviance, model3.2$df.residual)
+gof
+```
+
+```{r Fourth Model}
+model4keys <- statedata[,-c(1:2, 4:23, 26:27, 29:37, 43, 45, 51:54, 56:59, 61)]
+
+model4.1 <- glm(Fatalities ~ . -Total.population + offset(log(Total.population)), family = "poisson", model4keys)
+summary(model4.1)
+
+model4.2 <- stepAIC(model4.1)
+summary(model4.2)
+gof <- 1-pchisq(model4.2$deviance, model4.2$df.residual)
+gof
+#Clearly starting with all terms and using stepAIC does not work. Let's try including the variables highlighted in the EDA.
+
+model4.3 <- glm(Fatalities ~ adjGas + adjMiles + X2021 + prisonpct + adjTransit + offset(log(Total.population)), family = "poisson", model4keys)
+summary(model4.3)
+gof <- 1-pchisq(model4.3$deviance, model4.3$df.residual)
+gof
+#Poisson model does not work. Let's see if a dispersion parameter needs to be added.
+
+make_bins4 <- function(var){
+  model4keys %>% mutate(var_bin = bin_function(var)) %>% group_by(var_bin) %>% summarize(mean_counts = mean(Fatalities), var_counts = var(Fatalities))
+}
+
+make_bins4(model4keys$Total.population)
+make_bins4(model4keys$adjGas)
+make_bins4(model4keys$adjMiles)
+make_bins4(model4keys$X2021)
+make_bins4(model4keys$prisonpct)
+make_bins4(model4keys$adjTransit)
+#Clearly, a dispersion parameter would help.
+
+model4.4 <- glm(Fatalities ~ adjGas + adjMiles + X2021 + prisonpct + adjTransit + offset(log(Total.population)), family = "quasipoisson", model4keys)
+summary(model4.4)
+gof <- 1-pchisq(model4.4$deviance, model4.4$df.residual)
+gof
+
+model4.5 <- glm(Fatalities ~ adjMiles + X2021 + prisonpct + adjTransit + offset(log(Total.population)), family = "quasipoisson", model4keys)
+summary(model4.5)
+gof <- 1-pchisq(model4.5$deviance, model4.5$df.residual)
+gof
+#Quasi-poisson does not work. Again, the last resort is a negative binomial model.
+
+model4.6 <- glm.nb(Fatalities ~ . -Total.population + offset(log(Total.population)), model4keys)
+summary(model4.6)
+model4.7 <- stepAIC(model4.6)
+summary(model4.7)
+gof <- 1-pchisq(model4.7$deviance, model4.7$df.residual)
+gof
+```
